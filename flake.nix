@@ -22,7 +22,7 @@
           eazyssh = pkgs.buildNpmPackage {
             pname = "eazyssh";
             version = "0.1.0";
-            src = ./eazyssh;
+            src = ./simple-ssh;
             npmDepsHash = "sha256-ZTvP2387UofgDSNF+AGIksbVfueweayN/zKADFzu6a0=";
             npmBuildScript = "build";
             postInstall = ''
