@@ -153,7 +153,6 @@ export async function removeHostFromConfig(name: string): Promise<boolean> {
           // Partial match - rewrite Host line with remaining hosts
           const remainingHosts = hostNames.filter(h => h !== name).join(" ");
           result.push(`Host ${remainingHosts}`);
-          insideTarget = true;
           continue;
         }
       } else {
