@@ -27,6 +27,16 @@ export function parseSshConfig(content: string): SshHost[] {
   const hosts: SshHost[] = [];
   const lines = content.split("\n");
   let currentHost: SshHost | null = null;
+  let pendingNames: string[] = [];
+
+  const flushPendingHosts = () => {
+    if (pendingNames.length > 0 && currentHost) {
+      for (const name of pendingNames) {
+        hosts.push({ ...currentHost, name });
+      }
+      pendingNames = [];
+    }
+  };
 
   for (const line of lines) {
     const trimmed = line.trim();
@@ -34,13 +44,15 @@ export function parseSshConfig(content: string): SshHost[] {
 
     const hostMatch = trimmed.match(/^Host\s+(.+)$/i);
     if (hostMatch) {
-      // Support multiple hosts in single Host directive (space-separated)
+      flushPendingHosts();
+
       const hostNames = hostMatch[1].trim().split(/\s+/);
-      for (const name of hostNames) {
-        // Skip wildcard hosts
-        if (name === "*" || name.includes("*") || name.includes("?")) continue;
-        if (currentHost) hosts.push(currentHost);
-        currentHost = { name, extras: {} };
+      pendingNames = hostNames.filter(
+        (name) => name !== "*" && !name.includes("*") && !name.includes("?")
+      );
+
+      if (pendingNames.length > 0) {
+        currentHost = { name: pendingNames[0], extras: {} };
       }
       continue;
     }
@@ -70,7 +82,7 @@ export function parseSshConfig(content: string): SshHost[] {
     }
   }
 
-  if (currentHost) hosts.push(currentHost);
+  flushPendingHosts();
   return hosts;
 }
 
