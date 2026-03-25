@@ -58,6 +58,11 @@ program
   .option("-p, --port <port>", "SSH port")
   .option("-i, --identity-file <path>", "Path to identity file")
   .action(async (name, options) => {
+    if (!options.hostname) {
+      console.error("Error: --hostname is required");
+      process.exit(1);
+    }
+
     const host: SshHost = {
       name,
       hostname: options.hostname,

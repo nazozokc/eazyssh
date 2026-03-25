@@ -1,8 +1,8 @@
-import { spawn } from "child_process";
+import { execSync, spawn } from "child_process";
 import type { SshHost } from "./config.js";
+import { formatHostLabel } from "./config.js";
 
 export function hasFzf(): boolean {
-  const { execSync } = require("child_process");
   try {
     execSync("which fzf", { stdio: "ignore" });
     return true;
@@ -28,7 +28,7 @@ export async function selectHostWithFzf(
       stdio: ["pipe", "pipe", "inherit"],
     });
 
-    const input = hosts.map((h) => formatLabel(h)).join("\n");
+    const input = hosts.map((h) => formatHostLabel(h)).join("\n");
     proc.stdin.write(input);
     proc.stdin.end();
 
@@ -43,19 +43,10 @@ export async function selectHostWithFzf(
         return;
       }
       const selected = output.trim();
-      const host = hosts.find((h) => formatLabel(h) === selected);
+      const host = hosts.find((h) => formatHostLabel(h) === selected);
       resolve(host || null);
     });
   });
-}
-
-function formatLabel(host: SshHost): string {
-  const name = host.name.padEnd(20);
-  const userHost = host.user
-    ? `${host.user}@${host.hostname || host.name}`
-    : (host.hostname || host.name);
-  const port = host.port ? `:${host.port}` : "";
-  return `${name} ${userHost}${port}`;
 }
 
 export async function connectSsh(host: SshHost): Promise<void> {
@@ -69,7 +60,6 @@ export async function connectSsh(host: SshHost): Promise<void> {
   return new Promise((resolve, reject) => {
     const proc = spawn("ssh", args, {
       stdio: "inherit",
-      shell: true,
     });
 
     proc.on("close", (code) => {
