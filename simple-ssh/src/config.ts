@@ -140,7 +140,13 @@ async function writeAtomically(filePath: string, content: string): Promise<void>
  * Handles multiple hosts in a single Host directive and wildcard patterns.
  */
 export async function removeHostFromConfig(name: string): Promise<boolean> {
-  const content = await readFile(SSH_CONFIG_PATH, "utf-8");
+  let content: string;
+  try {
+    content = await readFile(SSH_CONFIG_PATH, "utf-8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw error;
+  }
   const lines = content.split("\n");
   const result: string[] = [];
   let insideTarget = false;
