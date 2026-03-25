@@ -16,27 +16,31 @@ program
   .description("A simple SSH host manager CLI")
   .version("0.1.0");
 
+async function runConnect(): Promise<void> {
+  const hosts = await readSshConfig();
+  if (hosts.length === 0) {
+    console.error("No hosts found in ~/.ssh/config");
+    process.exit(1);
+  }
+
+  if (!hasFzf()) {
+    console.error("fzf not found. Install it: https://github.com/junegunn/fzf");
+    process.exit(1);
+  }
+
+  const selected = await selectHostWithFzf(hosts);
+  if (!selected) {
+    process.exit(0);
+  }
+
+  await connectSsh(selected);
+}
+
 program
   .command("connect")
   .description("Select a host with fzf and SSH connect")
   .action(async () => {
-    const hosts = await readSshConfig();
-    if (hosts.length === 0) {
-      console.error("No hosts found in ~/.ssh/config");
-      process.exit(1);
-    }
-
-    if (!hasFzf()) {
-      console.error("fzf not found. Install it: https://github.com/junegunn/fzf");
-      process.exit(1);
-    }
-
-    const selected = await selectHostWithFzf(hosts);
-    if (!selected) {
-      process.exit(0);
-    }
-
-    await connectSsh(selected);
+    await runConnect();
   });
 
 program
@@ -130,4 +134,8 @@ program
     }
   });
 
-program.parse();
+if (process.argv.length === 2) {
+  await runConnect();
+} else {
+  program.parse();
+}
