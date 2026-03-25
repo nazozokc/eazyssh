@@ -1,4 +1,4 @@
-import { execSync, spawn } from "child_process";
+import { execSync } from "child_process";
 import { platform } from "os";
 import type { SshHost } from "./config.js";
 import { formatHostLabel } from "./config.js";
@@ -102,6 +102,7 @@ export async function connectSsh(host: SshHost): Promise<void> {
 
     proc.on("close", (code) => {
       if (code === 0) resolve();
+      else if (code === null) reject(new Error("ssh process was killed by signal"));
       else reject(new Error(`ssh exited with code ${code}`));
     });
 

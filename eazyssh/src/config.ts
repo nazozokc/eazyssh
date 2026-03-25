@@ -160,8 +160,8 @@ export async function removeHostFromConfig(name: string): Promise<boolean> {
         insideTarget = false;
       }
     } else if (insideTarget && trimmed === "") {
-      // Empty line ends the current host block
       insideTarget = false;
+      continue;
     }
 
     if (!insideTarget) {
