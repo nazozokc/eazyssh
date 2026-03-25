@@ -1,0 +1,13 @@
+src/
+*.ts
+!*.d.ts
+tsconfig.json
+*.map
+node_modules/
+.pnpm-debug.log
+*.log
+.DS_Store
+AGENTS.md
+CLAUDE.md
+.git/
+.github/
