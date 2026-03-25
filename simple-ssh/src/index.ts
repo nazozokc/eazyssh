@@ -71,6 +71,12 @@ program
   .option("-p, --port <port>", "SSH port (1-65535)")
   .option("-i, --identity-file <path>", "Path to identity file")
   .action(async (name, options) => {
+    const validHostLabelPattern = /^[a-zA-Z0-9.\-_]+$/;
+    if (!validHostLabelPattern.test(name)) {
+      console.error("Error: host name contains invalid characters");
+      process.exit(1);
+    }
+
     if (!options.hostname) {
       console.error("Error: --hostname is required");
       process.exit(1);

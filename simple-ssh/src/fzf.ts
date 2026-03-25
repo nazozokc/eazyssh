@@ -70,19 +70,10 @@ export async function connectSsh(host: SshHost): Promise<void> {
 
   const args: string[] = [];
 
-  // Build the target safely
-  let target: string;
-  try {
-    const hostname = validateSshParam(host.hostname || host.name, "hostname");
-    if (host.user) {
-      const user = validateSshParam(host.user, "user");
-      target = `${user}@${hostname}`;
-    } else {
-      target = hostname;
-    }
-  } catch (error) {
-    throw error;
-  }
+  const hostname = validateSshParam(host.hostname || host.name, "hostname");
+  const target = host.user
+    ? `${validateSshParam(host.user, "user")}@${hostname}`
+    : hostname;
 
   args.push(target);
 

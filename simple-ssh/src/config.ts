@@ -1,4 +1,4 @@
-import { readFile, writeFile, rename } from "fs/promises";
+import { readFile, writeFile, rename, unlink } from "fs/promises";
 import { homedir } from "os";
 import path from "path";
 import { randomBytes } from "crypto";
@@ -27,6 +27,16 @@ export function parseSshConfig(content: string): SshHost[] {
   const hosts: SshHost[] = [];
   const lines = content.split("\n");
   let currentHost: SshHost | null = null;
+  let pendingNames: string[] = [];
+
+  const flushPendingHosts = () => {
+    if (pendingNames.length > 0 && currentHost) {
+      for (const name of pendingNames) {
+        hosts.push({ ...currentHost, name });
+      }
+      pendingNames = [];
+    }
+  };
 
   for (const line of lines) {
     const trimmed = line.trim();
@@ -34,13 +44,15 @@ export function parseSshConfig(content: string): SshHost[] {
 
     const hostMatch = trimmed.match(/^Host\s+(.+)$/i);
     if (hostMatch) {
-      // Support multiple hosts in single Host directive (space-separated)
+      flushPendingHosts();
+
       const hostNames = hostMatch[1].trim().split(/\s+/);
-      for (const name of hostNames) {
-        // Skip wildcard hosts
-        if (name === "*" || name.includes("*") || name.includes("?")) continue;
-        if (currentHost) hosts.push(currentHost);
-        currentHost = { name, extras: {} };
+      pendingNames = hostNames.filter(
+        (name) => name !== "*" && !name.includes("*") && !name.includes("?")
+      );
+
+      if (pendingNames.length > 0) {
+        currentHost = { name: pendingNames[0], extras: {} };
       }
       continue;
     }
@@ -70,7 +82,7 @@ export function parseSshConfig(content: string): SshHost[] {
     }
   }
 
-  if (currentHost) hosts.push(currentHost);
+  flushPendingHosts();
   return hosts;
 }
 
@@ -113,9 +125,8 @@ async function writeAtomically(filePath: string, content: string): Promise<void>
     await writeFile(tempPath, content, "utf-8");
     await rename(tempPath, filePath);
   } catch (error) {
-    // Clean up temp file on error
     try {
-      await writeFile(tempPath, "", "utf-8");
+      await unlink(tempPath);
     } catch {
       // Ignore cleanup errors
     }
@@ -128,7 +139,13 @@ async function writeAtomically(filePath: string, content: string): Promise<void>
  * Handles multiple hosts in a single Host directive and wildcard patterns.
  */
 export async function removeHostFromConfig(name: string): Promise<boolean> {
-  const content = await readFile(SSH_CONFIG_PATH, "utf-8");
+  let content: string;
+  try {
+    content = await readFile(SSH_CONFIG_PATH, "utf-8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw error;
+  }
   const lines = content.split("\n");
   const result: string[] = [];
   let insideTarget = false;
