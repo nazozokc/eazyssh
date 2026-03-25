@@ -1,6 +1,7 @@
-import { readFile, writeFile, appendFile } from "fs/promises";
+import { readFile, writeFile, rename } from "fs/promises";
 import { homedir } from "os";
 import path from "path";
+import { randomBytes } from "crypto";
 
 export interface SshHost {
   name: string;
@@ -11,7 +12,7 @@ export interface SshHost {
   extras: Record<string, string>;
 }
 
-const SSH_CONFIG_PATH = path.join(homedir(), ".ssh", "config");
+const SSH_CONFIG_PATH = process.env.SSH_CONFIG || path.join(homedir(), ".ssh", "config");
 
 export async function readSshConfig(): Promise<SshHost[]> {
   try {
@@ -33,10 +34,14 @@ export function parseSshConfig(content: string): SshHost[] {
 
     const hostMatch = trimmed.match(/^Host\s+(.+)$/i);
     if (hostMatch) {
-      const name = hostMatch[1].trim();
-      if (name === "*") continue;
-      if (currentHost) hosts.push(currentHost);
-      currentHost = { name, extras: {} };
+      // Support multiple hosts in single Host directive (space-separated)
+      const hostNames = hostMatch[1].trim().split(/\s+/);
+      for (const name of hostNames) {
+        // Skip wildcard hosts
+        if (name === "*" || name.includes("*") || name.includes("?")) continue;
+        if (currentHost) hosts.push(currentHost);
+        currentHost = { name, extras: {} };
+      }
       continue;
     }
 
@@ -69,6 +74,9 @@ export function parseSshConfig(content: string): SshHost[] {
   return hosts;
 }
 
+/**
+ * Atomically append a host to the SSH config file using a temp file.
+ */
 export async function appendHostToConfig(host: SshHost): Promise<void> {
   const lines = [
     "",
@@ -82,9 +90,43 @@ export async function appendHostToConfig(host: SshHost): Promise<void> {
     lines.push(`    ${key} ${value}`);
   }
 
-  await appendFile(SSH_CONFIG_PATH, lines.join("\n") + "\n", "utf-8");
+  // Read existing content first, then write atomically
+  try {
+    const existingContent = await readFile(SSH_CONFIG_PATH, "utf-8");
+    const newContent = existingContent + lines.join("\n") + "\n";
+    await writeAtomically(SSH_CONFIG_PATH, newContent);
+  } catch {
+    // File doesn't exist, create new
+    await writeAtomically(SSH_CONFIG_PATH, lines.join("\n") + "\n");
+  }
 }
 
+/**
+ * Write content to a file atomically using a temp file and rename.
+ */
+async function writeAtomically(filePath: string, content: string): Promise<void> {
+  const dir = path.dirname(filePath);
+  const tempFileName = `.ssh_config_tmp_${randomBytes(8).toString("hex")}`;
+  const tempPath = path.join(dir, tempFileName);
+
+  try {
+    await writeFile(tempPath, content, "utf-8");
+    await rename(tempPath, filePath);
+  } catch (error) {
+    // Clean up temp file on error
+    try {
+      await writeFile(tempPath, "", "utf-8");
+    } catch {
+      // Ignore cleanup errors
+    }
+    throw error;
+  }
+}
+
+/**
+ * Remove a host from the SSH config file atomically.
+ * Handles multiple hosts in a single Host directive and wildcard patterns.
+ */
 export async function removeHostFromConfig(name: string): Promise<boolean> {
   const content = await readFile(SSH_CONFIG_PATH, "utf-8");
   const lines = content.split("\n");
@@ -94,22 +136,40 @@ export async function removeHostFromConfig(name: string): Promise<boolean> {
 
   for (const line of lines) {
     const trimmed = line.trim();
-    if (trimmed.toLowerCase().startsWith("host ")) {
-      const hostName = trimmed.split(/\s+/)[1];
-      if (hostName === name) {
-        insideTarget = true;
+    const hostMatch = trimmed.match(/^Host\s+(.+)$/i);
+    if (hostMatch) {
+      // Handle multiple hosts in Host directive
+      const hostNames = hostMatch[1].trim().split(/\s+/);
+      const matchingHosts = hostNames.filter(h => h === name);
+
+      if (matchingHosts.length > 0) {
         found = true;
-        continue;
+        // If only one host matches, skip this Host line entirely
+        if (matchingHosts.length === hostNames.length) {
+          // All hosts in this directive match, skip the entire line
+          insideTarget = true;
+          continue;
+        } else {
+          // Partial match - rewrite Host line with remaining hosts
+          const remainingHosts = hostNames.filter(h => h !== name).join(" ");
+          result.push(`Host ${remainingHosts}`);
+          insideTarget = true;
+          continue;
+        }
       } else {
         insideTarget = false;
       }
+    } else if (insideTarget && trimmed === "") {
+      // Empty line ends the current host block
+      insideTarget = false;
     }
+
     if (!insideTarget) {
       result.push(line);
     }
   }
 
-  await writeFile(SSH_CONFIG_PATH, result.join("\n") + "\n", "utf-8");
+  await writeAtomically(SSH_CONFIG_PATH, result.join("\n") + "\n");
   return found;
 }
 

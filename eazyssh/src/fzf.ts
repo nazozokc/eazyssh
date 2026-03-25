@@ -1,10 +1,13 @@
 import { execSync, spawn } from "child_process";
+import { platform } from "os";
 import type { SshHost } from "./config.js";
 import { formatHostLabel } from "./config.js";
 
 export function hasFzf(): boolean {
   try {
-    execSync("which fzf", { stdio: "ignore" });
+    const isWindows = platform() === "win32";
+    const command = isWindows ? "where.exe fzf" : "which fzf";
+    execSync(command, { stdio: "ignore" });
     return true;
   } catch {
     return false;
@@ -49,13 +52,48 @@ export async function selectHostWithFzf(
   });
 }
 
+/**
+ * Validate and sanitize a string for use as SSH hostname/user.
+ * Only allows alphanumeric characters, dots, hyphens, and underscores.
+ */
+function validateSshParam(value: string, paramName: string): string {
+  // SSH hostnames and usernames should only contain these characters
+  const validPattern = /^[a-zA-Z0-9.\-_@]+$/;
+  if (!validPattern.test(value)) {
+    throw new Error(`Invalid ${paramName}: contains disallowed characters`);
+  }
+  return value;
+}
+
 export async function connectSsh(host: SshHost): Promise<void> {
   const { spawn } = await import("child_process");
 
   const args: string[] = [];
-  if (host.user) args.push(`${host.user}@${host.hostname || host.name}`);
-  else args.push(host.hostname || host.name);
-  if (host.port) args.push("-p", host.port);
+
+  // Build the target safely
+  let target: string;
+  try {
+    const hostname = validateSshParam(host.hostname || host.name, "hostname");
+    if (host.user) {
+      const user = validateSshParam(host.user, "user");
+      target = `${user}@${hostname}`;
+    } else {
+      target = hostname;
+    }
+  } catch (error) {
+    throw error;
+  }
+
+  args.push(target);
+
+  if (host.port) {
+    // Validate port number
+    const port = parseInt(host.port, 10);
+    if (isNaN(port) || port < 1 || port > 65535) {
+      throw new Error(`Invalid port number: ${host.port}`);
+    }
+    args.push("-p", host.port);
+  }
 
   return new Promise((resolve, reject) => {
     const proc = spawn("ssh", args, {

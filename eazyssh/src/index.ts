@@ -50,16 +50,31 @@ program
     }
   });
 
+/**
+ * Validate port number string.
+ * Returns true if valid port number (1-65535).
+ */
+function isValidPort(port: string): boolean {
+  const num = parseInt(port, 10);
+  return !isNaN(num) && num >= 1 && num <= 65535 && String(num) === port;
+}
+
 program
   .command("add <name>")
   .description("Add a new SSH host")
   .option("-H, --hostname <hostname>", "Hostname or IP address")
   .option("-u, --user <user>", "SSH username")
-  .option("-p, --port <port>", "SSH port")
+  .option("-p, --port <port>", "SSH port (1-65535)")
   .option("-i, --identity-file <path>", "Path to identity file")
   .action(async (name, options) => {
     if (!options.hostname) {
       console.error("Error: --hostname is required");
+      process.exit(1);
+    }
+
+    // Validate port if provided
+    if (options.port && !isValidPort(options.port)) {
+      console.error("Error: --port must be a number between 1 and 65535");
       process.exit(1);
     }
 
