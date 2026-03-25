@@ -1,4 +1,4 @@
-# eazyssh
+# simple-ssh
 
 `~/.ssh/config` を読み書きして、fzf でホストを選んで SSH 接続する CLI ツール。
 
